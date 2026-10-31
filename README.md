@@ -41,7 +41,7 @@ new keys, so **do not rotate these keys in OpenBao**.
 ## Build
 
 ```bash
-sbt assembly   # target/scala-2.13/openbao-kms-driver-0.1.0-SNAPSHOT.jar
+sbt assembly   # target/scala-2.13/canton-kms-driver-openbao-0.1.0-SNAPSHOT.jar
 ```
 
 The JAR is thin: Scala, circe, sttp, pureconfig and logback come from Canton at runtime and

@@ -2,7 +2,7 @@
 // (Splice 0.9.x ships Canton 3.6). The v1 driver API is stable within a minor line.
 val cantonVersion = "3.6.4"
 
-name := "openbao-kms-driver"
+name := "canton-kms-driver-openbao"
 organization := "com.saxonxyz"
 version := "0.1.0-SNAPSHOT"
 scalaVersion := "2.13.18" // Canton 3.6.4's
