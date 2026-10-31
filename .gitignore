@@ -1,0 +1,25 @@
+# sbt
+target/
+project/target/
+project/project/
+.bsp/
+
+# IDE
+.idea/
+.idea_modules/
+*.iml
+.vscode/
+.metals/
+.bloop/
+
+# Scala
+*.class
+*.log
+
+# macOS
+.DS_Store
+
+# Other
+*.swp
+*.swo
+*~
