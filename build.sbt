@@ -4,7 +4,8 @@ val cantonVersion = "3.6.4"
 
 name := "canton-kms-driver-openbao"
 organization := "com.saxonxyz"
-version := "0.1.0-SNAPSHOT"
+// Release builds set RELEASE_VERSION from the git tag (v0.1.0 -> 0.1.0); see .github/workflows/release.yml.
+version := sys.env.getOrElse("RELEASE_VERSION", "0.1.0-SNAPSHOT")
 scalaVersion := "2.13.18" // Canton 3.6.4's
 
 // Everything Canton already ships is Provided, so the driver JAR carries only our own

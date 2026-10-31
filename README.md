@@ -38,14 +38,16 @@ new keys, so **do not rotate these keys in OpenBao**.
 - Enable Canton's session signing keys (below). The trade-off, per the Canton docs, is that a
   memory snapshot of the participant exposes a session key for its lifetime.
 
-## Build
+## Get the driver
 
-```bash
-sbt assembly   # target/scala-2.13/canton-kms-driver-openbao-0.1.0-SNAPSHOT.jar
-```
+Download `canton-kms-driver-openbao-<version>.jar` and its `.sha256` from
+[Releases](../../releases), and check it: `sha256sum -c canton-kms-driver-openbao-<version>.jar.sha256`.
+
+Or build it: `sbt assembly` writes `target/scala-2.13/canton-kms-driver-openbao-0.1.0-SNAPSHOT.jar`.
 
 The JAR is thin: Scala, circe, sttp, pureconfig and logback come from Canton at runtime and
-`build.sbt` pins them to the versions Canton 3.6.4 ships. Re-pin when moving Canton minor.
+`build.sbt` pins them to the versions Canton 3.6.4 ships. Use a driver release built for your
+Canton minor version.
 
 ## OpenBao setup
 
@@ -86,29 +88,60 @@ canton.participants.participant.crypto.session-signing-keys.enabled = true
 
 `token-file` is re-read on every request, so a renewed token is picked up without a restart.
 
-With the Splice `splice-participant` Helm chart, `.Values.kms` maps to `crypto.kms`:
+## Splice / Kubernetes
+
+No custom image is needed. The Splice participant image's `bin/canton` appends
+`EXTRA_CLASSPATH` to Canton's class path, so mount the JAR and point that variable at it.
+The JAR is small enough (about 250 KB) to ship as a ConfigMap:
+
+```bash
+kubectl -n <namespace> create configmap canton-kms-driver \
+  --from-file=driver.jar=canton-kms-driver-openbao-<version>.jar
+kubectl -n <namespace> create secret generic openbao-canton \
+  --from-file=token=<token-file> --from-file=ca.pem=<openbao-ca.pem>
+```
+
+Then, in the `splice-participant` Helm values. `.Values.kms` maps to Canton's `crypto.kms`,
+camelCase keys become kebab-case, and **values are written into HOCON unquoted**, so quote
+strings inside the YAML string: an unquoted `https://...` is read by HOCON as `https:`
+followed by a `//` comment.
 
 ```yaml
 kms:
   type: driver
   name: openbao
   config:
-    address: https://openbao.internal:8200
-    tokenFile: /var/run/secrets/openbao/token
-    caCertFile: /var/run/secrets/openbao/ca.pem
+    address: '"https://openbao.internal:8200"'
+    tokenFile: '"/var/run/secrets/openbao/token"'
+    caCertFile: '"/var/run/secrets/openbao/ca.pem"'
 additionalEnvVars:
+  - name: EXTRA_CLASSPATH
+    value: /opt/canton-kms/driver.jar
   - name: ADDITIONAL_CONFIG_SESSION_SIGNING_KEYS
     value: canton.participants.participant.crypto.session-signing-keys.enabled = true
 extraVolumes:
+  - name: kms-driver
+    configMap:
+      name: canton-kms-driver
   - name: openbao
     secret:
       secretName: openbao-canton
 extraVolumeMounts:
+  - name: kms-driver
+    mountPath: /opt/canton-kms
   - name: openbao
     mountPath: /var/run/secrets/openbao
 ```
 
-The driver JAR must also be on the participant's class path (for example a derived image).
+Checked: the official Splice 0.9.4 participant image
+(`ghcr.io/digital-asset/decentralized-canton-sync/docker/canton-participant:0.9.4`) loads the
+driver through `EXTRA_CLASSPATH`, creates its keys in OpenBao, and masks the token in its
+config dump; `helm template` of `splice-participant` 0.9.4 renders the values above to the
+intended HOCON. Not yet installed through the chart in a cluster.
+
+A KMS participant must be a fresh participant: Canton cannot move an existing participant's
+keys into a KMS (see the Canton Foundation's
+[validator security guide](https://docs.canton.network/global-synchronizer/production-operations/validator-security)).
 
 ## Tests
 
