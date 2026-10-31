@@ -19,6 +19,19 @@ class OpenBaoKmsDriverSpec extends AnyWordSpec with Matchers {
       OpenBaoKmsDriver.isRetryable("sign: 503 - {\"errors\":[\"Vault is sealed\"]}") shouldBe true
       OpenBaoKmsDriver.isRetryable("sign: Connection refused") shouldBe true
     }
+    "not retry an untrusted TLS certificate" in {
+      val e = new RuntimeException("Exception when sending request",
+        new javax.net.ssl.SSLHandshakeException("PKIX path building failed"))
+      val err = s"sign: ${OpenBaoTransitClient.describe(e)}"
+      err should include("PKIX path building failed")
+      OpenBaoKmsDriver.isRetryable(err) shouldBe false
+    }
+    "keep the root cause of other transport failures, and retry them" in {
+      val e = new RuntimeException("Exception when sending request", new java.net.ConnectException("Connection refused"))
+      val err = s"sign: ${OpenBaoTransitClient.describe(e)}"
+      err should include("ConnectException: Connection refused")
+      OpenBaoKmsDriver.isRetryable(err) shouldBe true
+    }
   }
 
   "uniqueKeyName" should {

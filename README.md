@@ -10,7 +10,8 @@ Canton ships built-in support for AWS KMS and Google Cloud KMS only. This driver
 operator on any other provider, on premises, or on their own hardware follow the Canton
 Foundation's advice to keep validator keys in a KMS, using a key service they run themselves.
 
-Status: passes DA's driver test suite (`com.daml %% kms-driver-testing` 3.6.4) and runs a
+Status: passes DA's driver test suite (`com.daml %% kms-driver-testing` 3.6.4), over plain HTTP
+and over TLS with a private CA, and runs a
 Canton 3.6.4 participant end to end. Not yet run in production.
 
 ## Supported keys

@@ -148,11 +148,13 @@ object OpenBaoKmsDriver {
 
   private val HttpStatus = """: (\d{3}) - """.r
 
-  /** A 4xx other than 429 is permanent (bad token, missing policy, unknown key), so Canton must
-    * not retry it forever; 429, 5xx (including 503 sealed) and transport errors stay retryable.
+  /** A 4xx other than 429 is permanent (bad token, missing policy, unknown key), and so is an
+    * untrusted TLS certificate, so Canton must not retry them forever; 429, 5xx (including 503
+    * sealed) and other transport errors (connection refused, timeouts) stay retryable.
     */
   def isRetryable(err: String): Boolean =
-    HttpStatus.findFirstMatchIn(err).map(_.group(1).toInt) match {
+    if (err.contains(OpenBaoTransitClient.TlsRejected)) false
+    else HttpStatus.findFirstMatchIn(err).map(_.group(1).toInt) match {
       case Some(code) if code >= 400 && code < 500 => code == 429
       case _ => true
     }

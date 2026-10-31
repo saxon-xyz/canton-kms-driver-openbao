@@ -49,7 +49,7 @@ class OpenBaoTransitClient(config: OpenBaoKmsConfig, backend: SttpBackend[Identi
       .headers(config.namespace.map(ns => Map("X-Vault-Namespace" -> ns)).getOrElse(Map.empty[String, String]))
       .readTimeout(config.requestTimeout)
     Try(withHeaders.send(backend)).toEither.left
-      .map(e => s"$what: ${e.getMessage}")
+      .map(e => s"$what: ${describe(e)}")
       .flatMap { resp =>
         if (resp.code.isSuccess)
           if (resp.body.trim.isEmpty) Right(None)
@@ -75,7 +75,7 @@ class OpenBaoTransitClient(config: OpenBaoKmsConfig, backend: SttpBackend[Identi
     val sys = uri"${config.address.stripSuffix("/")}/v1/sys/health"
     for {
       _ <- Try(basicRequest.get(sys).response(asStringAlways).readTimeout(config.requestTimeout).send(backend))
-        .toEither.left.map(e => s"health: ${e.getMessage}")
+        .toEither.left.map(e => s"health: ${describe(e)}")
         // 200 active, 429 unsealed standby; 501 not initialised, 503 sealed
         .flatMap(r => if (r.code.code == 200 || r.code.code == 429) Right(()) else Left(s"health: ${r.code.code} - ${r.body}"))
       _ <- get("token lookup", uri"${config.address.stripSuffix("/")}/v1/auth/token/lookup-self")
@@ -163,6 +163,24 @@ object OpenBaoTransitClient {
     val builder = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(config.connectionTimeout.toMillis))
     config.caCertFile.foreach(f => builder.sslContext(sslContextTrusting(f)))
     new OpenBaoTransitClient(config, HttpClientSyncBackend.usingClient(builder.build()))
+  }
+
+  /** Marks a TLS certificate the driver does not trust: a configuration error, not retryable. */
+  val TlsRejected = "TLS certificate rejected"
+
+  /** sttp wraps transport failures as "Exception when sending request", which hides the cause
+    * an operator needs (wrong CA, hostname mismatch, connection refused). Walk to the root cause.
+    */
+  private[openbao] def describe(e: Throwable): String = {
+    val chain = Iterator.iterate(e)(_.getCause).takeWhile(_ != null).take(10).toSeq
+    val root = chain.last
+    val tls = chain.exists {
+      case _: javax.net.ssl.SSLHandshakeException | _: java.security.cert.CertificateException => true
+      case _ => false
+    }
+    val cause = s"${root.getClass.getSimpleName}: ${root.getMessage}"
+    if (tls) s"$TlsRejected ($cause); check ca-cert-file and the server certificate's hostname"
+    else s"${e.getMessage} ($cause)"
   }
 
   private[openbao] def b64(bytes: Array[Byte]): String = Base64.getEncoder.encodeToString(bytes)
