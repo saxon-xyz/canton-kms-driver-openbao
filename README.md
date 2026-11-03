@@ -141,8 +141,31 @@ Checked: the official Splice 0.9.4 participant image
 (`ghcr.io/digital-asset/decentralized-canton-sync/docker/canton-participant:0.9.4`) loads the
 driver through `EXTRA_CLASSPATH`, creates its keys in OpenBao, and masks the token in its
 config dump; `helm template` of `splice-participant` 0.9.4 renders the values above to the
-intended HOCON. Not yet installed through the chart in a cluster. The Scaleway driver, which
-uses the same mechanism, has been: that install is how the ConfigMap problem above was found.
+intended HOCON.
+
+**Tested on a DevNet validator (2026-11-03).** v0.1.0 was installed with the `splice-participant`
+and `splice-validator` 0.9.4 charts, using the values above, as a fresh validator on DevNet. It
+talked to a single-node OpenBao 2.7.2 (Raft storage) over TLS with a private CA:
+
+- When the validator app initialised the participant, the participant created its namespace and
+  signing keys (`ecdsa-p256`) and its encryption key (`rsa-2048`) in Transit, all
+  non-exportable. The validator then onboarded to DevNet and its party and wallet were set up.
+- Pings to itself and to another DevNet validator succeeded. They took 13–20 s, the same range as
+  a validator with software keys measured from the same cluster.
+- **Token rotation without a restart works.** We wrote a new token into the Kubernetes secret.
+  The mounted file changed about 30 s later, and then we revoked the old token. Pings kept
+  working and the participant was not restarted.
+- **OpenBao outage.** After OpenBao was restarted and was still sealed, `driver-kms` and `crypto`
+  went to `Failed` (`503 ... "sealed":true`) and transactions failed. Canton kept retrying
+  signatures, about 250 a minute. Once OpenBao was unsealed, both went back to `Ok` within
+  10 s, with no participant restart. **The pod reported ready throughout**, so monitor the
+  `crypto` health state in the logs rather than relying on pod readiness.
+- After a participant restart it resumed with the same identity and created no new keys.
+
+Two things to know when running a second participant against one Postgres, as in that test:
+the chart's `persistence.enableParticipantDbConflictCheck` (on by default) refuses to create
+any second participant database, whatever its name. And OpenBao 2.x has no `file` storage
+backend; use `raft`.
 
 A KMS participant must be a fresh participant: Canton cannot move an existing participant's
 keys into a KMS (see the Canton Foundation's
