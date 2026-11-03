@@ -92,10 +92,14 @@ canton.participants.participant.crypto.session-signing-keys.enabled = true
 
 No custom image is needed. The Splice participant image's `bin/canton` appends
 `EXTRA_CLASSPATH` to Canton's class path, so mount the JAR and point that variable at it.
-The JAR is small enough (about 250 KB) to ship as a ConfigMap:
+Ship the JAR (about 250 KB) as a **Secret**, not a ConfigMap. The `splice-participant` chart's
+`extraVolumes` only renders `secret` and `persistentVolumeClaim` volumes. A `configMap` entry
+is silently dropped, Kubernetes mounts an empty directory instead, and Canton fails with
+`Driver 'openbao' ... not found. Found drivers: )`. `helm template` does not show the problem,
+because the volume's name still renders.
 
 ```bash
-kubectl -n <namespace> create configmap canton-kms-driver \
+kubectl -n <namespace> create secret generic canton-kms-driver-jar \
   --from-file=driver.jar=canton-kms-driver-openbao-<version>.jar
 kubectl -n <namespace> create secret generic openbao-canton \
   --from-file=token=<token-file> --from-file=ca.pem=<openbao-ca.pem>
@@ -121,8 +125,8 @@ additionalEnvVars:
     value: canton.participants.participant.crypto.session-signing-keys.enabled = true
 extraVolumes:
   - name: kms-driver
-    configMap:
-      name: canton-kms-driver
+    secret:
+      secretName: canton-kms-driver-jar
   - name: openbao
     secret:
       secretName: openbao-canton
@@ -137,7 +141,8 @@ Checked: the official Splice 0.9.4 participant image
 (`ghcr.io/digital-asset/decentralized-canton-sync/docker/canton-participant:0.9.4`) loads the
 driver through `EXTRA_CLASSPATH`, creates its keys in OpenBao, and masks the token in its
 config dump; `helm template` of `splice-participant` 0.9.4 renders the values above to the
-intended HOCON. Not yet installed through the chart in a cluster.
+intended HOCON. Not yet installed through the chart in a cluster. The Scaleway driver, which
+uses the same mechanism, has been: that install is how the ConfigMap problem above was found.
 
 A KMS participant must be a fresh participant: Canton cannot move an existing participant's
 keys into a KMS (see the Canton Foundation's
